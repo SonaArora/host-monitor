@@ -1,0 +1,11 @@
+{
+  "alerts": {
+    "cpu_percent": {"warning": 10, "critical": 90, "consecutive": 3},
+    "memory_percent": {"warning": 30, "critical": 90, "consecutive": 3},
+    "swap_percent": {"warning": 50, "consecutive": 10}
+  },
+  "summary": {
+  "metrics": ["cpu_percent", "memory_percent"],
+    "interval_seconds": 300
+  }
+}
