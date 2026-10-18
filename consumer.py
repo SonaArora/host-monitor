@@ -5,8 +5,12 @@ import logging
 import os
 from abc import ABC, abstractmethod
 
-## This module consumes raw metrics from Redis streams, compute usage from cumulative metrics(specially for CPU), and publish the computed metrics to new Redis streams.
-## The new streams are named "processed_metrics_<hostname>" where <hostname> is the hostname of the machine (the edge device) that produced the raw metrics.
+"""
+This module consumes raw metrics from Redis streams, compute usage from cumulative
+metrics(specially for CPU), and publish the computed metrics to new Redis streams.
+The new streams are named "processed_metrics_<hostname>" where <hostname> is the
+hostname of the machine (the edge device) that produced the raw metrics.
+"""
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +132,8 @@ class GPUUsage(UsageCalculator):
         }
 
 
-# Consumes raw metrics from Redis streams, computes derived metrics, and publishes them to new streams.
+# Consumes raw metrics from Redis streams, computes derived metrics,
+# and publishes them to new streams.
 class MetricsConsumer:
     envhost = os.environ.get("REDIS_HOST", "localhost")
     envport = os.environ.get("REDIS_PORT", 6379)
@@ -171,14 +176,13 @@ class MetricsConsumer:
         while True:
             results = self.client.xread(stream_offsets, block=0)
             for stream, messages in results:
-                print(f"stream", stream)
-                print(f"messages", messages)
                 for msg_id, fields in messages:
                     raw_metrics = json.loads(fields["metrics"])
                     computed = self.process(stream, raw_metrics)
                     logger.info(f"[{stream}] {json.dumps(computed)}")
 
-                    # "metrics.<hostname>" -> "<hostname>" (split once: hostnames can contain dots)
+                    # "metrics.<hostname>" -> "<hostname>"
+                    # (split once: hostnames can contain dots)
                     hostname = stream.split(".", 1)[1]
                     new_stream_processed = f"processed_metrics_{hostname}"
                     self.publisher.publish(

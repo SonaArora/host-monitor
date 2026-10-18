@@ -3,7 +3,6 @@ import os
 import psutil
 from datetime import datetime, timezone
 import time
-import json
 import platform
 from abc import ABC, abstractmethod
 from publisher import RedisPublisher
@@ -16,6 +15,13 @@ try:
 except Exception:
     NVML_AVAILABLE = False
 
+'''
+This module defines classes for collecting system metrics (CPU, Memory, Disk, GPU)   
+and publishing them to Redis stream metrics.hostname. The Collector class is 
+an abstract base class for metric collectors, and each specific collectors 
+(CPUMetrics, MemoryMetrics, DiskMetrics, GPUMetrics) implement the collect()
+method to gather metrics.
+'''
 
 class Collector(ABC):
     def __init__(self):
@@ -41,11 +47,7 @@ class CPUMetrics(Collector):
 
     def collect(self):
         cpu_metrics = {}
-        # print("Timestamp:", datetime.now(timezone.utc).isoformat())
-        # print(f"psutil.cpu_times():", psutil.cpu_times())
         cpu_usage = psutil.cpu_times()
-        # print(psutil.cpu_times_percent())
-        # total_cpu_usage = round(100 - cpu_usage.idle - cpu_usage.iowait, 2)
 
         try:
             loadavg_1m, loadavg_5m, loadavg_15m = psutil.getloadavg()
@@ -116,8 +118,6 @@ class DiskMetrics(Collector):
         unit_gb = 2**30
         io_info = {}
 
-        # print("Timestamp:", datetime.now(timezone.utc).isoformat())
-
         for partition in psutil.disk_partitions():
             try:
                 print(time.time())
@@ -135,8 +135,6 @@ class DiskMetrics(Collector):
                 )
             except (OSError, PermissionError):
                 continue
-
-            # print(f"io count",time.time())
 
             io = psutil.disk_io_counters(perdisk=True)
 
@@ -230,6 +228,10 @@ class GPUMetrics(Collector):
             except Exception:
                 pass
 
+'''
+Publish collected metrics to Redis stream by aggregating metrics 
+from all collectors (CPU, Memory, Disk, GPU) to combined_metrics
+'''
 
 def main():
     publisher = RedisPublisher()
