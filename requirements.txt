@@ -1,0 +1,4 @@
+psutil
+redis
+nvidia-ml-py
+tox
