@@ -1,11 +1,22 @@
 {
   "alerts": {
-    "cpu_percent": {"warning": 10, "critical": 90, "consecutive": 3},
-    "memory_percent": {"warning": 30, "critical": 90, "consecutive": 3},
-    "swap_percent": {"warning": 50, "consecutive": 10}
+    "cpu_percent": {"warning": 80, "critical": 90, "consecutive": 10},
+    "memory_percent": {"warning": 80, "critical": 90, "consecutive": 10},
+    "swap_percent": {"warning": 50, "consecutive": 10},
+    "disk_percent": {"warning": 80, "critical": 90, "consecutive": 10},
+    "gpu_utilization_percent": {"warning": 80, "critical": 95, "consecutive": 10},
+    "temperature_c": {"warning": 80, "critical": 90, "consecutive": 10}
   },
   "summary": {
-  "metrics": ["cpu_percent", "memory_percent"],
+    "metrics": [
+      "cpu_percent",
+      "memory_percent",
+      "disk_percent",
+      "gpu_utilization_percent",
+      "gpu_memory_percent",
+      "gpu_temperature",
+      "temperature_c"
+    ],
     "interval_seconds": 300
   }
 }
