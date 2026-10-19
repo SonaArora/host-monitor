@@ -1,0 +1,5 @@
+.git
+.tox
+__pycache__
+test-redis.py
+.venv

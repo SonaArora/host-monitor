@@ -1,0 +1,39 @@
+# central side: redis, consumer, alert and the status ui
+# collector.py runs on each edge device instead (see README)
+services:
+  redis:
+    image: redis:7
+    # 127.0.0.1 by default (this machine only); set REDIS_BIND to the server's
+    # private IP so edge devices can reach it
+    ports: ["${REDIS_BIND:-127.0.0.1}:6379:6379"]
+
+  consumer:
+    build: .
+    command: python consumer.py
+    environment:
+      REDIS_HOST: redis
+    depends_on: [redis]
+    # exits if no streams exist yet, so keep retrying until collectors send data
+    restart: unless-stopped
+
+  alert:
+    build: .
+    command: python alert.py
+    environment:
+      REDIS_HOST: redis
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+    # mounted, so changing thresholds only needs a restart, not a rebuild
+    volumes: ["./alert_config.json:/app/alert_config.json:ro,z"]
+    depends_on: [redis]
+    restart: unless-stopped
+
+  ui:
+    build: .
+    command: streamlit run ui.py --server.address 0.0.0.0
+    environment:
+      REDIS_HOST: redis
+    ports: ["127.0.0.1:8501:8501"]
+    volumes: ["./alert_config.json:/app/alert_config.json:ro,z"]
+    depends_on: [redis]
+    restart: unless-stopped
