@@ -2,3 +2,5 @@ psutil
 redis
 nvidia-ml-py
 tox
+streamlit
+pandas
