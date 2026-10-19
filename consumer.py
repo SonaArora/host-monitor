@@ -1,16 +1,16 @@
-from publisher import RedisPublisher
-import redis
-import json
-import logging
-import os
-from abc import ABC, abstractmethod
-
 """
 This module consumes raw metrics from Redis streams, compute usage from cumulative
 metrics(specially for CPU), and publish the computed metrics to new Redis streams.
 The new streams are named "processed_metrics_<hostname>" where <hostname> is the
 hostname of the machine (the edge device) that produced the raw metrics.
 """
+
+from publisher import RedisPublisher
+import redis
+import json
+import logging
+import os
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
@@ -112,24 +112,34 @@ class DiskUsage(UsageCalculator):
         return {"disk_percent": disk_percent}
 
 
+# Reports the current temperature of each hardware sensor.
+class TemperatureUsage(UsageCalculator):
+    key = "temperature"
+
+    def compute(self, raw):
+        # collector publishes {"<chip>.<label>": {"current_c", "high_c", "critical_c"}}
+        temperature_c = {}
+        for sensor, values in raw.items():
+            temperature_c[sensor] = values["current_c"]
+        return {"temperature_c": temperature_c}
+
+
 # Computes GPU usage percentage for each GPU
 class GPUUsage(UsageCalculator):
     key = "gpu"
 
     def compute(self, raw):
-        return {
-            "gpu": [
-                {
-                    "index": gpu["index"],
-                    "name": gpu["name"],
-                    "gpu_percent": gpu["gpu_utilization_percent"],
-                    "memory_percent": self._percent(
-                        gpu["memory_used_mb"], gpu["memory_total_mb"]
-                    ),
-                }
-                for gpu in raw
-            ]
-        }
+        gpu_percent = {}
+        for gpu in raw:
+            gpu_percent["index"] = gpu["index"]
+            gpu_percent["gpu_utilization_percent"] = gpu["gpu_utilization_percent"]
+            gpu_percent["gpu_memory_percent"] = (
+                round(gpu["memory_used_mb"] / gpu["memory_total_mb"] * 100, 2)
+                if gpu["memory_total_mb"]
+                else None
+            )
+            gpu_percent["gpu_temperature"] = gpu["temperature_c"]
+        return gpu_percent
 
 
 # Consumes raw metrics from Redis streams, computes derived metrics,
@@ -155,6 +165,7 @@ class MetricsConsumer:
                 CPUUsage(),
                 MemoryUsage(),
                 DiskUsage(),
+                TemperatureUsage(),
                 GPUUsage(),
             ]
         computed = {}

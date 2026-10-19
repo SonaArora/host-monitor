@@ -1,5 +1,12 @@
-import os
+"""
+This module defines classes for collecting system metrics (CPU, Memory, Disk, GPU)
+and publishing them to Redis stream metrics.hostname. The Collector class is
+an abstract base class for metric collectors, and each specific collectors
+(CPUMetrics, MemoryMetrics, DiskMetrics, GPUMetrics) implement the collect()
+method to gather metrics.
+"""
 
+import os
 import psutil
 from datetime import datetime, timezone
 import time
@@ -15,13 +22,6 @@ try:
 except Exception:
     NVML_AVAILABLE = False
 
-'''
-This module defines classes for collecting system metrics (CPU, Memory, Disk, GPU)   
-and publishing them to Redis stream metrics.hostname. The Collector class is 
-an abstract base class for metric collectors, and each specific collectors 
-(CPUMetrics, MemoryMetrics, DiskMetrics, GPUMetrics) implement the collect()
-method to gather metrics.
-'''
 
 class Collector(ABC):
     def __init__(self):
@@ -37,13 +37,13 @@ class Collector(ABC):
             self.metrics = self.collect()
             # print(json.dumps(self.metrics, indent=2))
         except Exception as e:
-            print(f"Error collecting {self.name}: {e}")
+            print(f"Error collecting metrics: {e}")
 
 
 class CPUMetrics(Collector):
-    def __init__(self, interval):
+
+    def __init__(self):
         super().__init__()
-        self.interval = interval
 
     def collect(self):
         cpu_metrics = {}
@@ -74,9 +74,9 @@ class CPUMetrics(Collector):
 
 
 class MemoryMetrics(Collector):
-    def __init__(self, interval):
+
+    def __init__(self):
         super().__init__()
-        self.interval = interval
 
     def collect(self):
 
@@ -109,9 +109,9 @@ class MemoryMetrics(Collector):
 
 
 class DiskMetrics(Collector):
-    def __init__(self, interval):
+
+    def __init__(self):
         super().__init__()
-        self.interval = interval
 
     def collect(self):
         disk_info = []
@@ -155,10 +155,31 @@ class DiskMetrics(Collector):
         return disk_info, io_info
 
 
-class GPUMetrics(Collector):
-    def __init__(self, interval):
+class TemperatureMetrics(Collector):
+
+    def __init__(self):
         super().__init__()
-        self.interval = interval
+
+    def collect(self):
+        # Linux only; returns {} if no sensors are exposed (common in containers/VMs)
+        if not hasattr(psutil, "sensors_temperatures"):
+            return {}
+        temps = {}
+        for chip, entries in psutil.sensors_temperatures().items():
+            for i, t in enumerate(entries):
+                label = t.label or f"{chip}_{i}"
+                temps[f"{chip}.{label}"] = {
+                    "current_c": t.current,
+                    "high_c": t.high,
+                    "critical_c": t.critical,
+                }
+        return temps
+
+
+class GPUMetrics(Collector):
+    def __init__(self):
+        super().__init__()
+
         if not NVML_AVAILABLE:
             raise RuntimeError("No NVIDIA GPU or driver found.")
         self.device_count = pynvml.nvmlDeviceGetCount()
@@ -228,17 +249,19 @@ class GPUMetrics(Collector):
             except Exception:
                 pass
 
-'''
-Publish collected metrics to Redis stream by aggregating metrics 
-from all collectors (CPU, Memory, Disk, GPU) to combined_metrics
-'''
+
+"""
+Publish collected metrics to Redis stream by aggregating metrics
+from all collectors (CPU, Memory, Disk, Temperature, GPU) to combined_metrics
+"""
+
 
 def main():
     publisher = RedisPublisher()
 
-    collectors = [CPUMetrics(1), MemoryMetrics(1), DiskMetrics(1)]
+    collectors = [CPUMetrics(), MemoryMetrics(), DiskMetrics(), TemperatureMetrics()]
     if NVML_AVAILABLE:
-        collectors.append(GPUMetrics(1))
+        collectors.append(GPUMetrics())
 
     hostname = collectors[0].hostname
     stream = f"metrics.{hostname}"
@@ -253,9 +276,10 @@ def main():
                 "cpu": collectors[0].metrics,
                 "memory": collectors[1].metrics,
                 "disk": collectors[2].metrics,
+                "temperature": collectors[3].metrics,
             }
             if NVML_AVAILABLE:
-                combined_metrics["gpu"] = collectors[3].metrics
+                combined_metrics["gpu"] = collectors[4].metrics
 
             publisher.publish(stream, combined_metrics)
             time.sleep(scrape_interval)
