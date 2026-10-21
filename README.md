@@ -60,6 +60,31 @@ collector.py  --- redis :6379 --->   redis -> consumer -> alert.py -> Slack
 Needs Docker with the compose plugin, or Podman with `podman-compose`
 (`pip install podman-compose`). Python is not needed here, it's in the image.
 
+#### Install Docker (Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker          # apply group without logout; or log out and back in
+docker --version       # verify
+```
+
+If `docker-compose-v2` is not available on your Ubuntu version, install the plugin manually:
+
+```bash
+sudo apt install -y docker-compose-plugin
+```
+
+#### Install Podman (alternative, no daemon required)
+
+```bash
+sudo apt install -y podman podman-compose   # or: pip install podman-compose
+```
+
+---
+
 ```bash
 git clone https://github.com/SonaArora/host-monitor.git
 cd host-monitor
@@ -67,6 +92,7 @@ cd host-monitor
 # Slack webhooks (see Slack setup below); without them alerts are only logged
 export SLACK_WEBHOOK_URL='https://hooks.slack.com/services/...'
 export SLACK_ALERT_WEBHOOK_URL='https://hooks.slack.com/services/...'
+
 
 # let edge devices reach redis: use this server's private IP
 # (default is 127.0.0.1, which only works for a collector on this same machine)
@@ -210,9 +236,6 @@ For working on the code, everything can run as plain scripts on one machine:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# redis, only reachable from this machine
-docker run -d -p 127.0.0.1:6379:6379 --name redis redis
 ```
 
 Start each script in its own terminal, in this order. The consumer and

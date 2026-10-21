@@ -120,7 +120,7 @@ class DiskMetrics(Collector):
 
         for partition in psutil.disk_partitions():
             try:
-                print(time.time())
+                #print(time.time())
                 usage = psutil.disk_usage(partition.mountpoint)
                 disk_info.append(
                     {
