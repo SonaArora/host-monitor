@@ -6,14 +6,15 @@ hostname of the machine (the edge device) that produced the raw metrics.
 """
 
 from publisher import RedisPublisher
-import redis
 import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
-
+stream_check_seconds = 5  # how often to check for new messages in the streams
 
 # Abstract base class for computing derived metrics from raw metrics.
 class UsageCalculator(ABC):
@@ -149,10 +150,11 @@ class MetricsConsumer:
     envport = os.environ.get("REDIS_PORT", 6379)
 
     def __init__(self, host=envhost, port=envport):
-        self.client = redis.Redis(host=host, port=port, decode_responses=True)
         self.publisher = RedisPublisher(host=host, port=port)
+        self.client = self.publisher.client
         # one set of calculators per stream so CPU deltas don't mix across hosts
         self.calculators = {}
+
 
     def _get_streams(self):
         return self.client.keys("metrics.*")
@@ -175,17 +177,37 @@ class MetricsConsumer:
                 computed.update(calculator.compute(section))
         return computed
 
-    def consume_stream_and_publish_newstream(self):
-        streams = self._get_streams()
-        if not streams:
-            logger.warning("No metric streams found in Redis")
-            return
+    def _add_new_streams(self, stream_offsets):
+        # collectors can start after the consumer, so look for new streams
+        # on every loop, not only at startup
+        for stream in self._get_streams():
+            if stream in stream_offsets:
+                continue
+            # start from the stream's real last ID, not "$": "$" is re-evaluated
+            # on every XREAD, so messages arriving between reads would be lost
+            newest = self.client.xrevrange(stream, count=1)
+            if newest:
+                last_msg_id, _fields = newest[0]
+                stream_offsets[stream] = last_msg_id
+            else:
+                # empty stream: read from the beginning
+                stream_offsets[stream] = "0-0"
+            logger.info(f"Consuming new stream: {stream}")
 
-        stream_offsets = {stream: "$" for stream in streams}
-        logger.info(f"Consuming streams: {streams}")
+    def consume_stream_and_publish_newstream(self):
+        stream_offsets = {}
+        logger.info("Waiting for metric streams. Press Ctrl+C to stop.")
 
         while True:
-            results = self.client.xread(stream_offsets, block=0)
+            self._add_new_streams(stream_offsets)
+            if not stream_offsets:
+                # no collector has sent anything yet: wait instead of exiting
+                time.sleep(stream_check_seconds)
+                continue
+
+            # returns after stream_check_seconds even if nothing arrives,
+            # so the loop gets to look for new streams again
+            results = self.client.xread(stream_offsets, block=stream_check_seconds * 1000)
             for stream, messages in results:
                 for msg_id, fields in messages:
                     raw_metrics = json.loads(fields["metrics"])
